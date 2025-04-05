@@ -20,8 +20,8 @@ export default function App() {
 
     const modelParams = {
       maxNumBoxes: 1,          // Detect only one hand
-      iouThreshold: 0.5,
-      scoreThreshold: 0.6,
+      iouThreshold: 0.6, // Intersection over union threshold
+      scoreThreshold: 0.8, // Confidence threshold
     };
 
     // Load the handtrack.js model
@@ -115,7 +115,7 @@ export default function App() {
       
       if (predictions.length > 0) {
         const bbox = predictions[0].bbox; // [x, y, width, height]
-        // Simple heuristic: if the top of the box (y) is above half of video height,
+        // if the top of the box (y) is above half of video height,
         // we say the hand is raised.
         if (bbox[1] < videoHeight / 2) {
           setHandRaised(true);
@@ -167,7 +167,7 @@ export default function App() {
     <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
       <h1 className="text-3xl font-bold mb-4">Handy</h1>
 
-      <h1>{handRaised ? "Hand Raised" : "Hand Not Raised"}</h1>
+      <h2>{handRaised ? "Hand Raised" : "Hand Not Raised"}</h2>
       <div style={{ position: "relative", display: "inline-block" }}>
         <video
           ref={handvideoRef}
@@ -185,7 +185,6 @@ export default function App() {
           }}
         />
       </div>
-
 
 
       <video
@@ -207,7 +206,9 @@ export default function App() {
 
 
       <button
+        style={{border: "4px solid white"}}
         onClick={() => {
+          
           toggleMute();
           alert(isMuted ? "Audio is unmuted" : "Audio is muted");
         }}
@@ -238,6 +239,8 @@ export default function App() {
 
       <p className="mt-4 text-lg">{isMuted ? "You are Muted" : "You are Unmuted"}</p>
       <p className="mt-4 text-lg">{isSilent ? "No Sound Detected" : "Sound Detected"}</p>
+
+      
     </div>
   );
 }
