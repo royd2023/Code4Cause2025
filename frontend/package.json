@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mediapipe/hands": "^0.4.1675469240",
+    "handtrackjs": "^0.1.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

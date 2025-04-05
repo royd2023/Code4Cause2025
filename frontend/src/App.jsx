@@ -1,18 +1,36 @@
 import './App.css';
+import * as handTrack from "handtrackjs";
 // Simple React + WebRTC App
 import React, { useRef, useEffect, useState } from "react";
-import { Hands } from "@mediapipe/hands";
 
 export default function App() {
   const localVideoRef = useRef(null);
   const canvasRef = useRef(null);
-  const handCanvasRef = useRef(null); // Canvas for hand detection
   const [stream, setStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isSilent, setIsSilent] = useState(false); // State to track silence
-  const [handDetected, setHandDetected] = useState(false); // State to track hand detection
+
+  const handvideoRef = useRef(null);
+  const handCanvasRef = useRef(null);
+  const [model, setModel] = useState(null);
+  const [handRaised, setHandRaised] = useState(false);
+
 
   useEffect(() => {
+
+    const modelParams = {
+      maxNumBoxes: 1,          // Detect only one hand
+      iouThreshold: 0.5,
+      scoreThreshold: 0.6,
+    };
+
+    // Load the handtrack.js model
+    handTrack.load(modelParams).then((loadedModel) => {
+      setModel(loadedModel);
+      startVideo(loadedModel);
+    });
+
+
     const getMedia = async () => {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -23,61 +41,6 @@ export default function App() {
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;
         }
-
-        // Initialize MediaPipe Hands
-        const hands = new Hands({
-          locateFile: (file) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-        });
-
-        hands.setOptions({
-          maxNumHands: 1,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.7,
-          minTrackingConfidence: 0.7,
-        });
-
-        hands.onResults((results) => {
-          const handCanvas = handCanvasRef.current;
-          const ctx = handCanvas.getContext("2d");
-
-          // Clear the canvas
-          ctx.clearRect(0, 0, handCanvas.width, handCanvas.height);
-
-          // Draw the video frame
-          if (results.image) {
-            ctx.drawImage(results.image, 0, 0, handCanvas.width, handCanvas.height);
-          }
-
-          // Check for hand landmarks and update state
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            setHandDetected(true); // Hand detected
-            results.multiHandLandmarks.forEach((landmarks) => {
-              landmarks.forEach((landmark) => {
-                const x = landmark.x * handCanvas.width;
-                const y = landmark.y * handCanvas.height;
-
-                // Draw a circle for each landmark
-                ctx.beginPath();
-                ctx.arc(x, y, 5, 0, 2 * Math.PI);
-                ctx.fillStyle = "red";
-                ctx.fill();
-              });
-            });
-          } else {
-            setHandDetected(false); // No hand detected
-          }
-        });
-
-        // Process video frames
-        const processVideo = async () => {
-          if (localVideoRef.current) {
-            await hands.send({ image: localVideoRef.current });
-          }
-          requestAnimationFrame(processVideo);
-        };
-
-        processVideo();
 
         // Process audio
         const audioContext = new AudioContext();
@@ -135,6 +98,59 @@ export default function App() {
     getMedia();
   }, []);
 
+  const startVideo = (loadedModel) => {
+    handTrack.startVideo(handvideoRef.current).then((status) => {
+      if (status) {
+        runDetection(loadedModel);
+      } else {
+        console.log("Please enable video");
+      }
+    });
+  };
+
+  const runDetection = (loadedModel) => {
+    loadedModel.detect(handvideoRef.current).then((predictions) => {
+      // Get the video dimensions (make sure the video is playing)
+      const videoHeight = handvideoRef.current.videoHeight || 480;
+      
+      if (predictions.length > 0) {
+        const bbox = predictions[0].bbox; // [x, y, width, height]
+        // Simple heuristic: if the top of the box (y) is above half of video height,
+        // we say the hand is raised.
+        if (bbox[1] < videoHeight / 2) {
+          setHandRaised(true);
+        } else {
+          setHandRaised(false);
+        }
+      } else {
+        setHandRaised(false);
+      }
+
+      drawPredictions(predictions);
+      requestAnimationFrame(() => runDetection(loadedModel));
+    });
+  };
+
+  const drawPredictions = (predictions) => {
+    const canvas = handCanvasRef.current;
+    if (!canvas || !handvideoRef.current) return;
+    const ctx = canvas.getContext("2d");
+
+    // Update canvas dimensions to match the video element.
+    canvas.width = handvideoRef.current.videoWidth;
+    canvas.height = handvideoRef.current.videoHeight;
+
+    // Clear the canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    predictions.forEach((prediction) => {
+      const [x, y, width, height] = prediction.bbox;
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+    });
+  };
+
   const toggleMute = () => {
     if (stream) {
       const audioTracks = stream.getAudioTracks();
@@ -150,6 +166,27 @@ export default function App() {
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
       <h1 className="text-3xl font-bold mb-4">Handy</h1>
+
+      <h1>{handRaised ? "Hand Raised" : "Hand Not Raised"}</h1>
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <video
+          ref={handvideoRef}
+          autoPlay
+          playsInline
+          style={{ width: "640px", height: "480px", border: "1px solid #333" }}
+        />
+        <canvas
+          ref={handCanvasRef}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+
+
 
       <video
         id="videowindow"
@@ -168,12 +205,6 @@ export default function App() {
         className="mt-4 border border-gray-300 rounded-lg shadow-md"
       />
 
-      <canvas
-        ref={handCanvasRef}
-        width={640}
-        height={480}
-        className="mt-4 border border-gray-300 rounded-lg shadow-md"
-      />
 
       <button
         onClick={() => {
@@ -207,9 +238,6 @@ export default function App() {
 
       <p className="mt-4 text-lg">{isMuted ? "You are Muted" : "You are Unmuted"}</p>
       <p className="mt-4 text-lg">{isSilent ? "No Sound Detected" : "Sound Detected"}</p>
-      <p className="mt-4 text-lg">{handDetected ? "Hand Detected" : "No Hand Detected"}</p>
     </div>
   );
 }
-
-
